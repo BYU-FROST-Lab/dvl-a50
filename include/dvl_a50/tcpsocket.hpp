@@ -5,6 +5,8 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <string.h>
 #include <iostream>
@@ -135,14 +137,32 @@ public:
         return recv(this->sock, tempBuffer, buffer_size, 0);
     }
 
-    void Send(char *tempBuffer)
+    // MSG_NOSIGNAL: return -1 (EPIPE) on a dead connection instead of raising SIGPIPE,
+    // which would otherwise terminate the process.
+    int Send(char *tempBuffer)
     {
-        send(this->sock, tempBuffer, strlen(tempBuffer), 0);
+        return send(this->sock, tempBuffer, strlen(tempBuffer), MSG_NOSIGNAL);
     }
-    
+
     void Close(void)
     {
-        close(this->sock);
+        if (this->sock >= 0)
+            close(this->sock);
+        this->sock = -1;
+    }
+
+    // Detect a peer that vanished without closing the connection (e.g. power loss).
+    // Idle connections are probed by keepalive; unacknowledged sends time out via TCP_USER_TIMEOUT.
+    // Either way, the next recv()/send() fails with ETIMEDOUT.
+    bool SetKeepAlive(int idle_s, int interval_s, int count)
+    {
+        int on = 1;
+        unsigned int user_timeout_ms = (idle_s + interval_s * count) * 1000;
+        return setsockopt(this->sock, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on)) == 0
+            && setsockopt(this->sock, IPPROTO_TCP, TCP_KEEPIDLE, &idle_s, sizeof(idle_s)) == 0
+            && setsockopt(this->sock, IPPROTO_TCP, TCP_KEEPINTVL, &interval_s, sizeof(interval_s)) == 0
+            && setsockopt(this->sock, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count)) == 0
+            && setsockopt(this->sock, IPPROTO_TCP, TCP_USER_TIMEOUT, &user_timeout_ms, sizeof(user_timeout_ms)) == 0;
     }
 
  
@@ -153,7 +173,7 @@ public:
 
 
 private:
-    int sock = 0;
+    int sock = -1;
     char *address;
     long arg;
     int res; 

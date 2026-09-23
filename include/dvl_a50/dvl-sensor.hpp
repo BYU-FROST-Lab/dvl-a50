@@ -57,20 +57,20 @@ public:
     ~DVL_A50();
 
 private:
-    int fault = 1; 
+    bool connected = false;
     string delimiter = ",";
     std::string ip_address;
     std::string dvl_frame_id;
     std::string odom_frame_id;
+    bool startup_disable_acoustics;
+    std::string startup_ntp_address;
     TCPSocket *tcpSocket;
     json json_data;
 
     DVL_Parameters resolveParameter(std::string param);
-    
-    std::chrono::steady_clock::time_point first_time;
-    std::chrono::steady_clock::time_point first_time_error;
-    
+
     rclcpp::TimerBase::SharedPtr timer_receive;
+    rclcpp::TimerBase::SharedPtr timer_reconnect;
     rclcpp::TimerBase::SharedPtr timer_send;
     rclcpp::Publisher<dvl_msgs::msg::DVL>::SharedPtr dvl_pub_report;
     rclcpp::Publisher<dvl_msgs::msg::DVLDR>::SharedPtr dvl_pub_pos;
@@ -79,6 +79,9 @@ private:
     rclcpp::Subscription<dvl_msgs::msg::ConfigCommand>::SharedPtr dvl_sub_config_command;
 
 
+    void try_connect();
+    void handle_disconnect(const std::string &reason);
+    void send_startup_commands();
     void handle_receive();
     //Publish velocity and transducer report
     void publish_vel_trans_report();
